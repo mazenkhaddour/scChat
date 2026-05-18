@@ -1,105 +1,78 @@
-"""Right-column visualisation panel — placeholder implementation."""
+"""Right-column visualisation panel — dispatches to the active gate renderer."""
 
 import json
+import time
 from pathlib import Path
 
-import pandas as pd
-import plotly.graph_objects as go
 import streamlit as st
+
+from frontend.viz.gates import (
+    gate1_filtering,
+    gate2_pca,
+    gate3_clustering,
+    gate4_annotation,
+)
+
+_GATE_RENDERERS = {
+    1: gate1_filtering.render,
+    2: gate2_pca.render,
+    3: gate3_clustering.render,
+    4: gate4_annotation.render,
+}
 
 
 def render_viz_panel() -> None:
-    """Render the visual insight deck in the right column."""
-    st.subheader("Visual Insight Deck")
+    gate_state = _poll_gate_state()
 
-    trials_path = Path(st.session_state.trials_path)
-
-    if not trials_path.exists():
-        _render_waiting_placeholder()
+    if gate_state is None:
+        _render_idle()
         return
 
-    df = _load_trials(trials_path)
-    if df is None or df.empty:
-        st.warning("trials_output.json found but contains no data yet.")
+    gate_id = gate_state.get("gate_id", 0)
+    status  = gate_state.get("status", "")
+
+    if gate_id == 5 or status == "complete":
+        _render_complete(gate_state)
         return
 
-    # Cache into session state so the chat panel can read it
-    st.session_state.trials_df = df
-    st.session_state.backend_ready = True
+    renderer = _GATE_RENDERERS.get(gate_id)
+    if renderer is None:
+        st.info("Pipeline initialising — waiting for the first gate…")
+        return
 
-    _render_dataframe(df)
+    # ── Agent reasoning expander ───────────────────────────────────────────────
+    reasoning = gate_state.get("agent_reasoning", "")
+    if reasoning:
+        with st.expander("Agent reasoning", expanded=True):
+            st.markdown(reasoning)
+
     st.divider()
-    _render_decay_curve(df)
+    renderer(gate_state)
 
 
-# ── helpers ──────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _render_waiting_placeholder() -> None:
-    st.info("Waiting for the backend to produce `workspace/trials_output.json`…")
-    # Placeholder decay-curve outline so the layout doesn't collapse
-    fig = go.Figure()
-    fig.update_layout(
-        title="Library complexity decay (no data yet)",
-        xaxis_title="Threshold",
-        yaxis_title="Cells retained",
-        height=400,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)",
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-
-def _load_trials(path: Path) -> pd.DataFrame | None:
+def _poll_gate_state() -> dict | None:
+    path = Path(st.session_state.gate_state_path)
+    if not path.exists():
+        return None
     try:
         data = json.loads(path.read_text())
-        return pd.DataFrame(data)
-    except Exception as exc:  # noqa: BLE001
-        st.error(f"Could not parse trials JSON: {exc}")
-        return None
+        st.session_state.gate_state = data
+        st.session_state.gate_id    = data.get("gate_id", 0)
+        return data
+    except (json.JSONDecodeError, OSError):
+        return st.session_state.get("gate_state")
 
 
-def _render_dataframe(df: pd.DataFrame) -> None:
-    st.markdown("**Filtering trial results**")
-    st.dataframe(df, use_container_width=True, hide_index=True)
+def _render_idle() -> None:
+    st.info("Waiting for the pipeline to start…")
+    st.caption("Make sure `launch_cockpit.sh` is running on the compute node.")
 
 
-def _render_decay_curve(df: pd.DataFrame) -> None:
-    """Plot cells-retained vs threshold if the expected columns are present."""
-    # Expected schema from agent_pipeline.py (to be confirmed):
-    #   threshold_label | cells_retained | pct_retained
-    x_col = "threshold_label" if "threshold_label" in df.columns else df.columns[0]
-    y_col = "cells_retained" if "cells_retained" in df.columns else df.columns[1] if len(df.columns) > 1 else None
-
-    fig = go.Figure()
-
-    if y_col:
-        fig.add_trace(go.Scatter(
-            x=df[x_col],
-            y=df[y_col],
-            mode="lines+markers",
-            name="Cells retained",
-            line={"color": "#00b4d8", "width": 2},
-            marker={"size": 7},
-        ))
-        if "pct_retained" in df.columns:
-            fig.add_trace(go.Scatter(
-                x=df[x_col],
-                y=df["pct_retained"],
-                mode="lines+markers",
-                name="% retained",
-                yaxis="y2",
-                line={"color": "#ff6b6b", "dash": "dot"},
-                marker={"size": 6},
-            ))
-            fig.update_layout(
-                yaxis2={"title": "% retained", "overlaying": "y", "side": "right", "range": [0, 100]},
-            )
-
-    fig.update_layout(
-        title="Library complexity decay across thresholds",
-        xaxis_title="Threshold profile",
-        yaxis_title="Cells retained",
-        height=420,
-        legend={"orientation": "h", "y": -0.2},
-    )
-    st.plotly_chart(fig, use_container_width=True)
+def _render_complete(gate_state: dict) -> None:
+    st.success("Pipeline complete!")
+    metrics = gate_state.get("metrics", {})
+    if metrics:
+        st.json(metrics)
+    st.balloons()

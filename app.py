@@ -1,4 +1,4 @@
-"""scChat — scRNA-seq QC cockpit entry point."""
+"""scChat — HITL Agentic QC Cockpit entry point."""
 
 import time
 
@@ -24,8 +24,25 @@ logo_col, title_col = st.columns([1, 6], gap="medium")
 with logo_col:
     st.image("scChat.jpeg", width=120)
 with title_col:
-    st.title("scChat — single-cell QC Cockpit")
-    st.caption("Conversational quality-control dashboard · powered by Ollama + LangGraph on HPC")
+    st.title("scChat — HITL Agentic QC Cockpit")
+    st.caption("Human-in-the-Loop agentic pipeline · Ollama + LangGraph on HPC")
+
+st.divider()
+
+# ── Gate progress bar ─────────────────────────────────────────────────────────
+GATES = ["Filtering", "PCA", "Clustering", "Annotation", "Complete"]
+gate_id = st.session_state.get("gate_id", 0)
+
+progress_cols = st.columns(len(GATES))
+for i, (col, label) in enumerate(zip(progress_cols, GATES), start=1):
+    with col:
+        if i < gate_id:
+            st.markdown(f"✅ **{label}**")
+        elif i == gate_id:
+            st.markdown(f"🔄 **{label}**")
+        else:
+            st.markdown(f"⬜ {label}")
+
 st.divider()
 
 # ── Two-column layout ─────────────────────────────────────────────────────────
@@ -37,7 +54,11 @@ with left:
 with right:
     render_viz_panel()
 
-# ── Polling loop: rerun every 3 s while backend hasn't signalled ready ────────
-if not st.session_state.backend_ready:
+# ── Polling: rerun every 3 s while waiting for a gate or pipeline to advance ──
+current_gate_id    = st.session_state.get("gate_id", 0)
+current_gate_state = st.session_state.get("gate_state") or {}
+pipeline_done      = current_gate_state.get("status") == "complete"
+
+if not pipeline_done:
     time.sleep(3)
     st.rerun()

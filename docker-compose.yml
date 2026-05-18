@@ -1,0 +1,102 @@
+version: "3.9"
+
+# ── scChat local / HPC test stack ─────────────────────────────────────────────
+# Usage:
+#   H5AD_PATH=/abs/path/to/folder H5AD_FILENAME=data.h5ad docker compose up
+#
+# The pipeline and frontend share ./workspace/ for JSON bridge files.
+# Ollama models are persisted in a named volume so the pull only happens once.
+
+services:
+
+  # ── 1. Ollama LLM server ─────────────────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: scchat-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_models:/root/.ollama
+    # Remove the deploy block if you have no NVIDIA GPU available
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 18   # allow up to 3 min for first start
+    restart: unless-stopped
+
+  # ── 2. One-shot model pull (exits after download) ────────────────────────────
+  ollama-pull:
+    image: ollama/ollama:latest
+    container_name: scchat-ollama-pull
+    entrypoint: ["ollama", "pull"]
+    command: ["${OLLAMA_MODEL:-qwen2.5-coder:14b}"]
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+    volumes:
+      - ollama_models:/root/.ollama
+    depends_on:
+      ollama:
+        condition: service_healthy
+    restart: "no"
+
+  # ── 3. LangGraph pipeline ─────────────────────────────────────────────────────
+  pipeline:
+    image: mazenkhaddour/scchat-pipeline:latest
+    container_name: scchat-pipeline
+    volumes:
+      - ./workspace:/app/workspace           # JSON bridge (shared with frontend)
+      - ${H5AD_PATH:-./workspace}:/data:ro   # input directory mounted read-only
+    environment:
+      - OLLAMA_URL=http://ollama:11434/api/chat
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5-coder:14b}
+      - WORKSPACE_DIR=/app/workspace
+    command:
+      - /data/${H5AD_FILENAME:-input.h5ad}
+      - --output
+      - /app/workspace/adata_final.h5ad
+    depends_on:
+      ollama-pull:
+        condition: service_completed_successfully
+    restart: "no"
+
+  # ── 4. Streamlit frontend ─────────────────────────────────────────────────────
+  frontend:
+    image: python:3.11-slim
+    container_name: scchat-frontend
+    working_dir: /app
+    volumes:
+      - .:/app                               # project files
+      - ./workspace:/app/workspace           # JSON bridge (shared with pipeline)
+    ports:
+      - "8501:8501"
+    environment:
+      - PYTHONPATH=/app
+    command: >
+      bash -c "
+        pip install -q
+          streamlit==1.36.0
+          plotly==5.22.0
+          pandas==2.2.2
+          watchdog==4.0.1
+          httpx==0.27.0
+          loguru==0.7.2
+        && streamlit run app.py
+          --server.port 8501
+          --server.headless true
+          --server.address 0.0.0.0
+          --server.fileWatcherType none
+      "
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+volumes:
+  ollama_models:     # persists the downloaded model across restarts
