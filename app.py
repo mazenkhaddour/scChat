@@ -20,8 +20,12 @@ st.set_page_config(
 init_session()
 
 # ── Header ────────────────────────────────────────────────────────────────────
-st.title("scChat — single-cell QC Cockpit")
-st.caption("Conversational quality-control dashboard · powered by Ollama + LangGraph on HPC")
+logo_col, title_col = st.columns([1, 6], gap="medium")
+with logo_col:
+    st.image("scChat.jpeg", use_container_width=True)
+with title_col:
+    st.title("scChat — single-cell QC Cockpit")
+    st.caption("Conversational quality-control dashboard · powered by Ollama + LangGraph on HPC")
 st.divider()
 
 # ── Two-column layout ─────────────────────────────────────────────────────────
