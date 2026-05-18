@@ -1,0 +1,1 @@
+"""Visualisation panel sub-package."""

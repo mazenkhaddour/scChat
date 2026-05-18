@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.env
+workspace/trials_output.json
+workspace/human_decision.json

@@ -1,0 +1,20 @@
+name: scchat-frontend
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  # Streamlit + UI
+  - pip:
+    - streamlit==1.35.0
+    - streamlit-chat==0.1.1        # chat message components
+    # Data / viz
+    - pandas==2.2.2
+    - plotly==5.22.0
+    # File watching / async helpers
+    - watchdog==4.0.1
+    # Utilities
+    - python-dotenv==1.0.1
+    - loguru==0.7.2
+    - httpx==0.27.0                # reserved for future REST calls to backend

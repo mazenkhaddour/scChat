@@ -1,0 +1,1 @@
+"""scChat frontend package."""
