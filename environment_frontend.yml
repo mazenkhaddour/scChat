@@ -7,7 +7,7 @@ dependencies:
   - pip
   # Streamlit + UI
   - pip:
-    - streamlit==1.35.0
+    - streamlit==1.36.0
     - streamlit-chat==0.1.1        # chat message components
     # Data / viz
     - pandas==2.2.2

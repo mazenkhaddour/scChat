@@ -22,7 +22,7 @@ init_session()
 # ── Header ────────────────────────────────────────────────────────────────────
 logo_col, title_col = st.columns([1, 6], gap="medium")
 with logo_col:
-    st.image("scChat.jpeg", use_container_width=True)
+    st.image("scChat.jpeg", width=120)
 with title_col:
     st.title("scChat — single-cell QC Cockpit")
     st.caption("Conversational quality-control dashboard · powered by Ollama + LangGraph on HPC")
